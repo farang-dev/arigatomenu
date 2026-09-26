@@ -7,9 +7,15 @@ import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/format";
 import {
   deleteCloudinaryImage,
+  uploadMenuItemImage,
   uploadRestaurantLogoImage,
 } from "@/lib/cloudinary";
 import { translateMenuContent, type TranslateSource } from "@/lib/translate";
+import {
+  extractMenuFromImage,
+  type ExtractedMenuResult,
+  type OcrExtractedCategory,
+} from "@/lib/ocr";
 import type { AllergenKey, DietaryLabelKey } from "@/lib/taxonomy";
 
 export type ActionState = { error?: string; message?: string } | undefined;
@@ -136,15 +142,32 @@ export async function updateRestaurant(
 ): Promise<ActionState> {
   const user = await requireUser();
   const adm = admin();
-  const { error } = await adm
+
+  const updatePayload: Record<string, unknown> = {
+    name: String(formData.get("name") || "").trim(),
+    tagline: String(formData.get("tagline") || "").trim() || null,
+    description: String(formData.get("description") || "").trim() || null,
+  };
+  if (formData.has("default_theme")) {
+    const defaultThemeRaw = String(formData.get("default_theme") || "light");
+    updatePayload.default_theme = ["light", "dark", "system"].includes(defaultThemeRaw) ? defaultThemeRaw : "light";
+  }
+
+  let { error } = await adm
     .from("restaurants")
-    .update({
-      name: String(formData.get("name") || "").trim(),
-      tagline: String(formData.get("tagline") || "").trim() || null,
-      description: String(formData.get("description") || "").trim() || null,
-    })
+    .update(updatePayload)
     .eq("id", id)
     .eq("owner_id", user.id);
+
+  if (error && error.code === "42703") {
+    delete updatePayload.default_theme;
+    const retry = await adm
+      .from("restaurants")
+      .update(updatePayload)
+      .eq("id", id)
+      .eq("owner_id", user.id);
+    error = retry.error;
+  }
 
   if (error) return { error: error.message };
 
@@ -329,6 +352,89 @@ export async function removeRestaurantLogo(
   revalidatePath(`/dashboard/restaurants/${restaurantId}/print`);
   revalidatePath(`/r/${restaurant.slug}`);
   return { message: "ロゴを削除しました。" };
+}
+
+export async function uploadRestaurantCover(
+  restaurantId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const file = formData.get("cover");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "画像ファイルを選択してください。" };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { error: "画像ファイル（PNG・JPEG・WebPなど）を選択してください。" };
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return { error: "画像サイズは5MB以下にしてください。" };
+  }
+
+  const { data: restaurant, error: findErr } = await admin()
+    .from("restaurants")
+    .select("id, slug, cover_public_id")
+    .eq("id", restaurantId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (findErr || !restaurant) {
+    return { error: "レストランが見つかりません。" };
+  }
+
+  let uploaded;
+  try {
+    uploaded = await uploadRestaurantLogoImage(file, `${restaurantId}/cover`);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "画像のアップロードに失敗しました。" };
+  }
+
+  const { error } = await admin()
+    .from("restaurants")
+    .update({ cover_url: uploaded.url, cover_public_id: uploaded.publicId })
+    .eq("id", restaurantId);
+  if (error) {
+    await deleteCloudinaryImage(uploaded.publicId).catch(() => undefined);
+    return { error: error.message };
+  }
+
+  if (restaurant.cover_public_id) {
+    await deleteCloudinaryImage(restaurant.cover_public_id).catch(() => undefined);
+  }
+
+  revalidatePath(`/dashboard/restaurants/${restaurantId}`);
+  revalidatePath(`/r/${restaurant.slug}`);
+  return { message: "店舗メイン画像（カバー写真）を更新しました。ストアフロントに反映されます。" };
+}
+
+export async function removeRestaurantCover(
+  restaurantId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const { data: restaurant, error: findErr } = await admin()
+    .from("restaurants")
+    .select("id, slug, cover_public_id")
+    .eq("id", restaurantId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (findErr || !restaurant) {
+    return { error: "レストランが見つかりません。" };
+  }
+
+  const { error } = await admin()
+    .from("restaurants")
+    .update({ cover_public_id: null, cover_url: null })
+    .eq("id", restaurantId);
+  if (error) return { error: error.message };
+
+  if (restaurant.cover_public_id) {
+    await deleteCloudinaryImage(restaurant.cover_public_id).catch(() => undefined);
+  }
+
+  revalidatePath(`/dashboard/restaurants/${restaurantId}`);
+  revalidatePath(`/r/${restaurant.slug}`);
+  return { message: "店舗メイン画像を削除しました。" };
 }
 
 // ============================================================
@@ -597,6 +703,109 @@ export async function updateItem(
 
   revalidatePath(`/dashboard/restaurants/*/menu`);
   return {};
+}
+
+// ============================================================
+// Menu item images
+// ============================================================
+
+export async function uploadItemImage(
+  itemId: string,
+  restaurantId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const adm = admin();
+
+  // Verify ownership: item -> category -> menu -> restaurant
+  const { data: item, error: findErr } = await adm
+    .from("menu_items")
+    .select("id, category_id, categories!inner(menus!inner(restaurants!inner(id, owner_id, slug)))")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (findErr || !item) return { error: "商品が見つかりません。" };
+  const restaurant = (item as unknown as { categories: { menus: { restaurants: { id: string; owner_id: string; slug: string } } } }).categories?.menus?.restaurants;
+  if (!restaurant || restaurant.owner_id !== user.id) return { error: "権限がありません。" };
+
+  const file = formData.get("image");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "画像ファイルを選択してください。" };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { error: "画像ファイル（PNG・JPEG・WebPなど）を選択してください。" };
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    return { error: "画像サイズは5MB以下にしてください。" };
+  }
+
+  // Delete existing image if any
+  const { data: existing } = await adm
+    .from("menu_item_images")
+    .select("id, public_id")
+    .eq("item_id", itemId)
+    .order("position")
+    .limit(1)
+    .maybeSingle();
+
+  let uploaded;
+  try {
+    uploaded = await uploadMenuItemImage(file, restaurantId);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "画像のアップロードに失敗しました。" };
+  }
+
+  if (existing) {
+    // Update existing record
+    await adm
+      .from("menu_item_images")
+      .update({ public_id: uploaded.publicId, url: uploaded.url })
+      .eq("id", existing.id);
+    await deleteCloudinaryImage(existing.public_id).catch(() => undefined);
+  } else {
+    await adm
+      .from("menu_item_images")
+      .insert({ item_id: itemId, public_id: uploaded.publicId, url: uploaded.url, position: 0 });
+  }
+
+  revalidatePath(`/dashboard/restaurants/${restaurantId}/menu`);
+  revalidatePath(`/r/${restaurant.slug}`);
+  return { message: "商品画像をアップロードしました。" };
+}
+
+export async function removeItemImage(
+  itemId: string,
+  restaurantId: string,
+  _prev: ActionState,
+  _formData: FormData,
+): Promise<ActionState> {
+  const user = await requireUser();
+  const adm = admin();
+
+  const { data: item, error: findErr } = await adm
+    .from("menu_items")
+    .select("id, categories!inner(menus!inner(restaurants!inner(id, owner_id, slug)))")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (findErr || !item) return { error: "商品が見つかりません。" };
+  const restaurant = (item as unknown as { categories: { menus: { restaurants: { id: string; owner_id: string; slug: string } } } }).categories?.menus?.restaurants;
+  if (!restaurant || restaurant.owner_id !== user.id) return { error: "権限がありません。" };
+
+  const { data: images } = await adm
+    .from("menu_item_images")
+    .select("id, public_id")
+    .eq("item_id", itemId);
+
+  if (images && images.length > 0) {
+    await adm.from("menu_item_images").delete().eq("item_id", itemId);
+    for (const img of images) {
+      await deleteCloudinaryImage(img.public_id).catch(() => undefined);
+    }
+  }
+
+  revalidatePath(`/dashboard/restaurants/${restaurantId}/menu`);
+  revalidatePath(`/r/${restaurant.slug}`);
+  return { message: "商品画像を削除しました。" };
 }
 
 export async function deleteItem(
@@ -881,4 +1090,196 @@ export async function translateMenu(
     return { error: "翻訳内容を保存できませんでした。" };
   }
   return { message: `${written}件を英語・中文・한국어に翻訳しました。メニューで確認できます。` };
+}
+
+// ============================================================
+// OCR Paper Menu Import (Beta)
+// ============================================================
+
+export type OcrAnalyzeResponse = {
+  error?: string;
+  data?: ExtractedMenuResult;
+};
+
+export async function ocrAnalyzeMenuImage(
+  restaurantId: string,
+  formData: FormData,
+): Promise<OcrAnalyzeResponse> {
+  const user = await requireUser();
+  const adm = admin();
+  const { data: restaurant, error: rErr } = await adm
+    .from("restaurants")
+    .select("id")
+    .eq("id", restaurantId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (rErr || !restaurant) return { error: "権限がありません。" };
+
+  const file = formData.get("image");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "画像ファイルを選択してください。" };
+  }
+  if (!file.type.startsWith("image/")) {
+    return { error: "画像ファイル（JPEG・PNG・WebP等）を選択してください。" };
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    return { error: "画像サイズは10MB以下にしてください。" };
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+  try {
+    const result = await extractMenuFromImage(base64, file.type);
+    return { data: result };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "画像解析に失敗しました。" };
+  }
+}
+
+export async function batchImportOcrMenu(
+  restaurantId: string,
+  categories: OcrExtractedCategory[],
+): Promise<ActionState> {
+  const user = await requireUser();
+  const adm = admin();
+  const { data: restaurant, error: rErr } = await adm
+    .from("restaurants")
+    .select("id, slug")
+    .eq("id", restaurantId)
+    .eq("owner_id", user.id)
+    .maybeSingle();
+  if (rErr || !restaurant) return { error: "権限がありません。" };
+
+  const { data: menus } = await adm
+    .from("menus")
+    .select("id")
+    .eq("restaurant_id", restaurantId)
+    .order("position")
+    .limit(1);
+  let menuId = menus?.[0]?.id;
+  if (!menuId) {
+    const { data: newMenu, error: mErr } = await adm
+      .from("menus")
+      .insert({ restaurant_id: restaurantId, slug: "main", name: "メニュー", position: 0 })
+      .select("id")
+      .single();
+    if (mErr || !newMenu) return { error: "メニューの初期化に失敗しました。" };
+    menuId = newMenu.id;
+  }
+
+  // Fetch existing categories to reuse or determine position
+  const { data: existingCats } = await adm
+    .from("categories")
+    .select("id, name, position")
+    .eq("menu_id", menuId)
+    .is("parent_id", null)
+    .order("position", { ascending: true });
+
+  const catMap = new Map<string, string>();
+  let currentPos = (existingCats ?? []).length;
+  for (const c of existingCats ?? []) {
+    catMap.set(c.name.trim().toLowerCase(), c.id);
+  }
+
+  let totalImportedItems = 0;
+
+  for (const cat of categories) {
+    if (!cat.name.trim() || cat.items.length === 0) continue;
+
+    let categoryId = catMap.get(cat.name.trim().toLowerCase());
+    if (!categoryId) {
+      const slug = slugify(cat.name) || `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const { data: createdCat, error: cErr } = await adm
+        .from("categories")
+        .insert({
+          menu_id: menuId,
+          parent_id: null,
+          slug,
+          name: cat.name.trim(),
+          position: currentPos++,
+        })
+        .select("id")
+        .single();
+      if (cErr || !createdCat) continue;
+      categoryId = createdCat.id as string;
+      catMap.set(cat.name.trim().toLowerCase(), categoryId);
+
+      // Save category translations if present
+      if (cat.translations) {
+        for (const loc of ["en", "zh", "ko"] as const) {
+          const tName = cat.translations[loc]?.trim();
+          if (tName) {
+            await adm.from("category_translations").upsert(
+              { category_id: categoryId, locale: loc, name: tName },
+              { onConflict: "category_id,locale" },
+            );
+          }
+        }
+      }
+    }
+
+    // Get current item count in category for position
+    const { data: currentItems } = await adm
+      .from("menu_items")
+      .select("id")
+      .eq("category_id", categoryId);
+    let itemPos = (currentItems ?? []).length;
+
+    for (const item of cat.items) {
+      if (!item.name.trim()) continue;
+
+      const { data: createdItem, error: iErr } = await adm
+        .from("menu_items")
+        .insert({
+          category_id: categoryId,
+          name: item.name.trim(),
+          description: item.description?.trim() || null,
+          price: item.price || 0,
+          price_note: item.priceNote?.trim() || null,
+          status: "available",
+          position: itemPos++,
+        })
+        .select("id")
+        .single();
+
+      if (iErr || !createdItem) continue;
+      totalImportedItems++;
+
+      // Insert dietary labels
+      if (item.dietary && item.dietary.length > 0) {
+        await replaceJoin(adm, "menu_item_dietary_labels", createdItem.id, item.dietary);
+      }
+      // Insert allergens
+      if (item.allergens && item.allergens.length > 0) {
+        await replaceJoin(adm, "menu_item_allergens", createdItem.id, item.allergens);
+      }
+      // Insert translations
+      if (item.translations) {
+        for (const loc of ["en", "zh", "ko"] as const) {
+          const t = item.translations[loc];
+          if (t?.name?.trim() || t?.description?.trim()) {
+            await adm.from("menu_item_translations").upsert(
+              {
+                item_id: createdItem.id,
+                locale: loc,
+                name: t.name?.trim() || item.name.trim(),
+                description: t.description?.trim() || null,
+              },
+              { onConflict: "item_id,locale" },
+            );
+          }
+        }
+      }
+    }
+  }
+
+  revalidatePath(`/dashboard/restaurants/${restaurantId}/menu`);
+  revalidatePath(`/dashboard/restaurants/${restaurantId}/print`);
+  revalidatePath(`/r/${restaurant.slug}`);
+  revalidatePath("/dashboard");
+
+  return {
+    message: `${totalImportedItems}品を一括登録しました。`,
+  };
 }

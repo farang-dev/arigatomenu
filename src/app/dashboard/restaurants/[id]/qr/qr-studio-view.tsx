@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import QRCode from "qrcode";
 import {
@@ -18,7 +18,6 @@ import {
   QrCode,
   RotateCcw,
   Sparkles,
-  Store,
   Wifi,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,7 +42,6 @@ type TemplateType = "stand-portrait" | "stand-tent" | "sticker-sheet" | "mini-ca
 type PaperSize = "a4" | "a5" | "postcard";
 type StickerGrid = "6" | "8" | "12";
 type StickerStyle = "badge" | "circle" | "compact";
-type TableMode = "none" | "sequential" | "single";
 
 const DARK_COLOR_PRESETS = [
   { value: "#1B1B1B", label: "ジェットブラック", color: "#1B1B1B" },
@@ -83,13 +81,6 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
   const [stickerGrid, setStickerGrid] = useState<StickerGrid>("8");
   const [stickerStyle, setStickerStyle] = useState<StickerStyle>("badge");
 
-  // Table numbering state
-  const [tableMode, setTableMode] = useState<TableMode>("sequential");
-  const [tablePrefix, setTablePrefix] = useState("TABLE");
-  const [tableStart, setTableStart] = useState<number>(1);
-  const [tableCount, setTableCount] = useState<number>(8);
-  const [singleTableNum, setSingleTableNum] = useState<string>("01");
-
   // QR Customization
   const [dark, setDark] = useState(restaurant.initialDark);
   const [light, setLight] = useState(restaurant.initialLight);
@@ -112,63 +103,27 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
   const [singlePngUrl, setSinglePngUrl] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
-  // Pre-generate QR SVGs for table items
-  const [tableQrSvgMap, setTableQrSvgMap] = useState<Record<string, string>>({});
+  // Pre-generate QR SVG for the restaurant URL
+  const [qrSvg, setQrSvg] = useState<string>("");
 
-  // Calculate table items to render
-  const tableList = useMemo(() => {
-    if (tableMode === "none") {
-      return [{ id: "main", label: "", num: "", url: restaurant.url }];
-    }
-    if (tableMode === "single") {
-      const numStr = singleTableNum.trim() || "01";
-      const tableUrl = `${restaurant.url}?table=${encodeURIComponent(numStr)}`;
-      return [{ id: "single", label: `${tablePrefix} ${numStr}`, num: numStr, url: tableUrl }];
-    }
-    // Sequential
-    const items = [];
-    const count = template === "sticker-sheet" ? Number(stickerGrid) : tableCount;
-    for (let i = 0; i < count; i++) {
-      const num = tableStart + i;
-      const padded = num < 10 ? `0${num}` : `${num}`;
-      const tableUrl = `${restaurant.url}?table=${num}`;
-      items.push({
-        id: `seq-${num}`,
-        label: `${tablePrefix} ${padded}`,
-        num: padded,
-        url: tableUrl,
-      });
-    }
-    return items;
-  }, [tableMode, tablePrefix, tableStart, tableCount, singleTableNum, restaurant.url, template, stickerGrid]);
-
-  // Generate SVG for all current table items
   useEffect(() => {
     let cancelled = false;
-    const generateAll = async () => {
-      const newMap: Record<string, string> = {};
-      for (const item of tableList) {
-        try {
-          const svg = await QRCode.toString(item.url, {
-            type: "svg",
-            errorCorrectionLevel: ec,
-            margin: 1,
-            color: { dark, light },
-          });
-          newMap[item.url] = svg;
-        } catch (e) {
-          console.error("QR SVG generation error", e);
-        }
-      }
-      if (!cancelled) {
-        setTableQrSvgMap(newMap);
-      }
-    };
-    generateAll();
+    QRCode.toString(restaurant.url, {
+      type: "svg",
+      errorCorrectionLevel: ec,
+      margin: 1,
+      color: { dark, light },
+    })
+      .then((svg) => {
+        if (!cancelled) setQrSvg(svg);
+      })
+      .catch((e) => {
+        console.error("QR SVG generation error", e);
+      });
     return () => {
       cancelled = true;
     };
-  }, [tableList, dark, light, ec]);
+  }, [restaurant.url, dark, light, ec]);
 
   // Generate Single QR SVG and High-Res PNG
   useEffect(() => {
@@ -537,101 +492,6 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                     </div>
                   </div>
 
-                  {/* Table Numbers & Batch Printing */}
-                  <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
-                    <h2 className="flex items-center gap-2 font-serif text-sm font-bold tracking-tight">
-                      <Store size={16} className="text-primary" /> テーブル番号・連番設定
-                    </h2>
-                    <p className="mt-1 text-[0.6875rem] text-muted-foreground">
-                      テーブルごとのQRコード・番号を自動生成して一括印刷できます。
-                    </p>
-
-                    <div className="mt-3 flex rounded-xl border border-border/80 p-1 bg-muted/30">
-                      {[
-                        { value: "none", label: "番号なし" },
-                        { value: "sequential", label: "連番生成" },
-                        { value: "single", label: "指定番号" },
-                      ].map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          onClick={() => setTableMode(opt.value as TableMode)}
-                          className={cn(
-                            "flex-1 rounded-lg py-1 text-xs font-bold transition-all",
-                            tableMode === opt.value
-                              ? "bg-background text-foreground shadow-xs"
-                              : "text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {tableMode !== "none" && (
-                      <div className="mt-4 space-y-3 pt-3 border-t border-border/50">
-                        <div>
-                          <label className="text-[0.6875rem] font-semibold text-muted-foreground">
-                            表記プレフィックス
-                          </label>
-                          <input
-                            type="text"
-                            value={tablePrefix}
-                            onChange={(e) => setTablePrefix(e.target.value)}
-                            placeholder="例: TABLE, 卓, 席"
-                            className="mt-1 w-full rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
-                          />
-                        </div>
-
-                        {tableMode === "sequential" && (
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className="text-[0.6875rem] font-semibold text-muted-foreground">
-                                開始番号
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                value={tableStart}
-                                onChange={(e) => setTableStart(Math.max(1, Number(e.target.value)))}
-                                className="mt-1 w-full rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-[0.6875rem] font-semibold text-muted-foreground">
-                                {template === "sticker-sheet" ? "面付け枚数" : "印刷枚数（卓数）"}
-                              </label>
-                              <input
-                                type="number"
-                                min={1}
-                                max={30}
-                                disabled={template === "sticker-sheet"}
-                                value={template === "sticker-sheet" ? Number(stickerGrid) : tableCount}
-                                onChange={(e) => setTableCount(Math.max(1, Number(e.target.value)))}
-                                className="mt-1 w-full rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs outline-none focus:border-primary disabled:opacity-50"
-                              />
-                            </div>
-                          </div>
-                        )}
-
-                        {tableMode === "single" && (
-                          <div>
-                            <label className="text-[0.6875rem] font-semibold text-muted-foreground">
-                              テーブル番号
-                            </label>
-                            <input
-                              type="text"
-                              value={singleTableNum}
-                              onChange={(e) => setSingleTableNum(e.target.value)}
-                              placeholder="例: 01, A-1, カウンター3"
-                              className="mt-1 w-full rounded-xl border border-border/80 bg-background px-3 py-1.5 text-xs outline-none focus:border-primary"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Text & Content Customization */}
                   <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs">
                     <h2 className="flex items-center gap-2 font-serif text-sm font-bold tracking-tight">
@@ -873,18 +733,15 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
               {/* Render Selected Template */}
               {template === "stand-portrait" && (
                 <div className="flex flex-col items-center gap-8 w-full">
-                  {tableList.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className={cn(
-                        "print-container mx-auto overflow-hidden bg-white text-foreground shadow-lg border border-border/80 print:shadow-none print:border-none",
-                        getPageClass(),
-                        idx < tableList.length - 1 && "print-page-break",
-                      )}
-                      style={{
-                        padding: paperSize === "postcard" ? "12mm 10mm" : paperSize === "a5" ? "16mm 14mm" : "24mm 20mm",
-                      }}
-                    >
+                  <div
+                    className={cn(
+                      "print-container mx-auto overflow-hidden bg-white text-foreground shadow-lg border border-border/80 print:shadow-none print:border-none",
+                      getPageClass(),
+                    )}
+                    style={{
+                      padding: paperSize === "postcard" ? "12mm 10mm" : paperSize === "a5" ? "16mm 14mm" : "24mm 20mm",
+                    }}
+                  >
                       <div className="flex h-full flex-col justify-between items-center text-center border-2 border-foreground/15 rounded-3xl p-6 sm:p-8 bg-gradient-to-b from-white via-white to-muted/20">
                         {/* Header: Logo & Restaurant Name */}
                         <div className="flex flex-col items-center">
@@ -910,13 +767,8 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                           )}
                         </div>
 
-                        {/* Middle: Headline & Table Number */}
+                        {/* Middle: Headline */}
                         <div className="my-4 flex flex-col items-center">
-                          {item.label && (
-                            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-1 text-xs font-black tracking-widest text-background">
-                              {item.label}
-                            </div>
-                          )}
                           <h3 className="font-serif text-xl sm:text-2xl font-black tracking-tight text-primary">
                             {headline}
                           </h3>
@@ -929,10 +781,10 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
 
                         {/* QR Code Graphic (High crisp SVG) */}
                         <div className="relative my-2 flex flex-col items-center justify-center rounded-2xl border-4 border-foreground/10 p-3 sm:p-4 bg-white shadow-xs">
-                          {tableQrSvgMap[item.url] ? (
+                          {qrSvg ? (
                             <div
                               className="size-48 sm:size-64 [&_svg]:size-full [&_svg]:h-auto"
-                              dangerouslySetInnerHTML={{ __html: tableQrSvgMap[item.url] }}
+                              dangerouslySetInnerHTML={{ __html: qrSvg }}
                             />
                           ) : (
                             <div className="grid size-48 sm:size-64 place-items-center bg-muted/40 animate-pulse text-xs text-muted-foreground">
@@ -940,7 +792,7 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                             </div>
                           )}
                           <p className="mt-2 text-[0.625rem] font-mono text-muted-foreground truncate max-w-[200px]">
-                            {item.url}
+                            {restaurant.url}
                           </p>
                         </div>
 
@@ -997,9 +849,8 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                         </div>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  </div>
+                )}
 
               {/* Template: Stand Tent (Foldable Triangle A4 Landscape) */}
               {template === "stand-tent" && (
@@ -1019,19 +870,14 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                       <div>
                         <p className="font-serif text-xl font-black">{restaurant.name}</p>
                         <h4 className="mt-1 text-sm font-bold text-primary">{headline}</h4>
-                        {tableList[0]?.label && (
-                          <span className="mt-1 inline-block rounded-full bg-foreground px-3 py-0.5 text-[0.6875rem] font-black text-background">
-                            {tableList[0].label}
-                          </span>
-                        )}
-                      </div>
+                        </div>
 
                       <div className="my-2 rounded-xl border border-border/80 p-2 bg-white">
-                        {tableQrSvgMap[tableList[0]?.url || ""] ? (
+                        {qrSvg ? (
                           <div
                             className="size-36 [&_svg]:size-full"
                             dangerouslySetInnerHTML={{
-                              __html: tableQrSvgMap[tableList[0]?.url || ""],
+                              __html: qrSvg,
                             }}
                           />
                         ) : null}
@@ -1050,19 +896,14 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                       <div>
                         <p className="font-serif text-xl font-black">{restaurant.name}</p>
                         <h4 className="mt-1 text-sm font-bold text-primary">{headline}</h4>
-                        {tableList[0]?.label && (
-                          <span className="mt-1 inline-block rounded-full bg-foreground px-3 py-0.5 text-[0.6875rem] font-black text-background">
-                            {tableList[0].label}
-                          </span>
-                        )}
-                      </div>
+                        </div>
 
                       <div className="my-2 rounded-xl border border-border/80 p-2 bg-white">
-                        {tableQrSvgMap[tableList[0]?.url || ""] ? (
+                        {qrSvg ? (
                           <div
                             className="size-36 [&_svg]:size-full"
                             dangerouslySetInnerHTML={{
-                              __html: tableQrSvgMap[tableList[0]?.url || ""],
+                              __html: qrSvg,
                             }}
                           />
                         ) : null}
@@ -1100,9 +941,9 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                       stickerGrid === "12" && "grid-cols-3 grid-rows-4",
                     )}
                   >
-                    {tableList.map((item) => (
+                    {Array.from({ length: Number(stickerGrid) }).map((_, i) => (
                       <div
-                        key={item.id}
+                        key={`sticker-${i}`}
                         className={cn(
                           "relative flex flex-col justify-between items-center text-center p-3 bg-white",
                           showCutLines && "border border-dashed border-border/80",
@@ -1118,13 +959,8 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                           </span>
                         )}
 
-                        {/* Top: Restaurant name & Table label */}
+                        {/* Top: Restaurant name */}
                         <div className="flex flex-col items-center">
-                          {item.label && (
-                            <span className="rounded-full bg-foreground px-2 py-0.5 text-[0.625rem] font-black text-background">
-                              {item.label}
-                            </span>
-                          )}
                           <p className="font-serif text-xs sm:text-sm font-bold truncate max-w-[140px]">
                             {restaurant.name}
                           </p>
@@ -1132,13 +968,13 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
 
                         {/* Center: QR */}
                         <div className="my-1 rounded-xl p-1 bg-white">
-                          {tableQrSvgMap[item.url] ? (
+                          {qrSvg ? (
                             <div
                               className={cn(
                                 "[&_svg]:size-full",
                                 stickerGrid === "6" ? "size-28" : stickerGrid === "8" ? "size-22" : "size-18",
                               )}
-                              dangerouslySetInnerHTML={{ __html: tableQrSvgMap[item.url] }}
+                              dangerouslySetInnerHTML={{ __html: qrSvg }}
                             />
                           ) : (
                             <div className="size-20 bg-muted/30 animate-pulse" />
@@ -1168,49 +1004,41 @@ export function QrStudioView({ restaurant }: { restaurant: QrStudioRestaurant })
                   </div>
 
                   <div className="grid grid-cols-2 grid-rows-5 gap-3 h-full w-full">
-                    {Array.from({ length: 10 }).map((_, idx) => {
-                      const item = tableList[idx % tableList.length] || tableList[0];
-                      return (
-                        <div
-                          key={idx}
-                          className={cn(
-                            "relative flex items-center justify-between p-3.5 bg-white rounded-xl border",
-                            showCutLines ? "border-dashed border-border/80" : "border-border/40",
-                          )}
-                        >
-                          <div className="flex flex-col justify-between h-full text-left max-w-[130px]">
-                            <div>
-                              {item?.label && (
-                                <span className="inline-block rounded-full bg-foreground px-2 py-0.5 text-[0.5625rem] font-black text-background mb-0.5">
-                                  {item.label}
-                                </span>
-                              )}
-                              <p className="font-serif text-xs font-bold text-foreground truncate">
-                                {restaurant.name}
-                              </p>
-                              <p className="text-[0.625rem] font-semibold text-primary mt-0.5">
-                                スマホでメニューを見る
-                              </p>
-                            </div>
-                            <div className="text-[0.5rem] text-muted-foreground leading-tight">
-                              <p>📷 カメラで読み取り</p>
-                              <p>Scan for Menu</p>
-                            </div>
+                    {Array.from({ length: 10 }).map((_, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          "relative flex items-center justify-between p-3.5 bg-white rounded-xl border",
+                          showCutLines ? "border-dashed border-border/80" : "border-border/40",
+                        )}
+                      >
+                        <div className="flex flex-col justify-between h-full text-left max-w-[130px]">
+                          <div>
+                            <p className="font-serif text-xs font-bold text-foreground truncate">
+                              {restaurant.name}
+                            </p>
+                            <p className="text-[0.625rem] font-semibold text-primary mt-0.5">
+                              スマホでメニューを見る
+                            </p>
                           </div>
-
-                          <div className="size-16 shrink-0 rounded-lg p-0.5 bg-white border border-border/50">
-                            {tableQrSvgMap[item?.url || ""] ? (
-                              <div
-                                className="size-full [&_svg]:size-full"
-                                dangerouslySetInnerHTML={{
-                                  __html: tableQrSvgMap[item?.url || ""],
-                                }}
-                              />
-                            ) : null}
+                          <div className="text-[0.5rem] text-muted-foreground leading-tight">
+                            <p>📷 カメラで読み取り</p>
+                            <p>Scan for Menu</p>
                           </div>
                         </div>
-                      );
-                    })}
+
+                        <div className="size-16 shrink-0 rounded-lg p-0.5 bg-white border border-border/50">
+                          {qrSvg ? (
+                            <div
+                              className="size-full [&_svg]:size-full"
+                              dangerouslySetInnerHTML={{
+                                __html: qrSvg,
+                              }}
+                            />
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

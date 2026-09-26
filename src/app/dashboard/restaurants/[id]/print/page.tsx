@@ -107,7 +107,7 @@ export default async function PrintMenuPage({
         .order("created_at");
       const itemIds = (rawItems ?? []).map((i) => i.id);
 
-      const [dlRes, alRes, trRes] = await Promise.all([
+      const [dlRes, alRes, trRes, imgRes] = await Promise.all([
         supabase
           .from("menu_item_dietary_labels")
           .select("item_id, label_id")
@@ -120,6 +120,11 @@ export default async function PrintMenuPage({
           .from("menu_item_translations")
           .select("item_id, locale, name, description")
           .in("item_id", itemIds),
+        supabase
+          .from("menu_item_images")
+          .select("item_id, url")
+          .in("item_id", itemIds)
+          .order("position"),
       ]);
 
       const dietaryByItem = new Map<string, string[]>();
@@ -145,6 +150,10 @@ export default async function PrintMenuPage({
           });
         }
       }
+      const imageByItem = new Map<string, string>();
+      for (const row of imgRes.data ?? []) {
+        if (!imageByItem.has(row.item_id)) imageByItem.set(row.item_id, row.url);
+      }
 
       for (const it of rawItems ?? []) {
         const t = transByItem.get(it.id);
@@ -157,6 +166,7 @@ export default async function PrintMenuPage({
           status: it.status as PrintCategory["items"][number]["status"],
           dietary: dietaryByItem.get(it.id) ?? [],
           allergens: allergensByItem.get(it.id) ?? [],
+          imageUrl: imageByItem.get(it.id),
         };
         itemsByCategory.set(it.category_id, [
           ...(itemsByCategory.get(it.category_id) ?? []),

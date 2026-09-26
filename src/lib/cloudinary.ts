@@ -45,6 +45,47 @@ async function request(
   return res.json() as Promise<Record<string, unknown>>;
 }
 
+export async function uploadMenuItemImage(
+  file: File,
+  restaurantId: string,
+): Promise<CloudinaryResult> {
+  const { apiKey, apiSecret } = cloudinaryEnv();
+  const folder = `arigatomenu/restaurants/${restaurantId}/items`;
+  const timestamp = Math.floor(Date.now() / 1000);
+  // Eager transform: 400×400 fill crop + WebP conversion for menu thumbnails
+  const eager = "c_fill,g_center,h_400,w_400,f_webp,q_auto";
+  const params = { eager, folder, timestamp };
+  const signature = sign(params, apiSecret);
+
+  const body = new FormData();
+  body.append("file", file);
+  body.append("folder", folder);
+  body.append("eager", eager);
+  body.append("timestamp", String(timestamp));
+  body.append("api_key", apiKey);
+  body.append("signature", signature);
+
+  const data = await request("upload", body);
+  if (!data.public_id) {
+    const message =
+      typeof data.error === "object" && data.error && "message" in data.error
+        ? String(data.error.message)
+        : "Cloudinary がエラーを返しました";
+    throw new Error(`画像のアップロードに失敗しました（${message}）。`);
+  }
+
+  // Prefer the eager (cropped/WebP) URL if available
+  const eager0 = Array.isArray(data.eager) && data.eager[0];
+  const url = eager0 && typeof eager0 === "object" && "secure_url" in eager0
+    ? String((eager0 as Record<string, unknown>).secure_url)
+    : String(data.secure_url ?? data.url ?? "");
+
+  return {
+    publicId: String(data.public_id),
+    url,
+  };
+}
+
 export async function uploadRestaurantLogoImage(
   file: File,
   restaurantId: string,

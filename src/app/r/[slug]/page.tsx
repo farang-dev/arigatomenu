@@ -7,6 +7,22 @@ export const metadata: Metadata = {
   title: "ArigatoMenu",
 };
 
+type RestaurantRow = {
+  id: string;
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  is_published: boolean;
+  updated_at: string | null;
+  slug: string;
+  logo_url: string | null;
+  cover_url: string | null;
+  address: string | null;
+  phone: string | null;
+  instagram: string | null;
+  default_theme?: string | null;
+};
+
 export default async function PublicMenuPage({
   params,
   searchParams,
@@ -19,11 +35,24 @@ export default async function PublicMenuPage({
   const locale = lang === "en" || lang === "zh" || lang === "ko" ? lang : "ja";
 
   const supabase = await createClient();
-  const { data: restaurant } = await supabase
+  let restaurant: RestaurantRow | null = null;
+  const { data: r1 } = await supabase
     .from("restaurants")
-    .select("id, name, tagline, description, is_published, updated_at, slug, logo_url")
+    .select("id, name, tagline, description, is_published, updated_at, slug, logo_url, cover_url, address, phone, instagram, default_theme")
     .eq("slug", slug)
     .maybeSingle();
+
+  if (r1) {
+    restaurant = r1;
+  } else {
+    const { data: r2 } = await supabase
+      .from("restaurants")
+      .select("id, name, tagline, description, is_published, updated_at, slug, logo_url, cover_url, address, phone, instagram")
+      .eq("slug", slug)
+      .maybeSingle();
+    restaurant = r2;
+  }
+
   if (!restaurant) notFound();
 
   if (!restaurant.is_published) {
@@ -99,7 +128,7 @@ export default async function PublicMenuPage({
     }
 
     const itemIds = rawItems.map((i) => i.id as string);
-    const [dlRes, alRes, trRes] = await Promise.all([
+    const [dlRes, alRes, trRes, imgRes] = await Promise.all([
       supabase
         .from("menu_item_dietary_labels")
         .select("item_id, label_id")
@@ -112,6 +141,11 @@ export default async function PublicMenuPage({
         .from("menu_item_translations")
         .select("item_id, locale, name, description")
         .in("item_id", itemIds),
+      supabase
+        .from("menu_item_images")
+        .select("item_id, url")
+        .in("item_id", itemIds)
+        .order("position"),
     ]);
 
     const dietaryByItem = new Map<string, string[]>();
@@ -127,6 +161,10 @@ export default async function PublicMenuPage({
       const m = transByItem.get(row.item_id) ?? {};
       m[row.locale] = { name: row.name, description: row.description };
       transByItem.set(row.item_id, m);
+    }
+    const imageByItem = new Map<string, string>();
+    for (const row of imgRes.data ?? []) {
+      if (!imageByItem.has(row.item_id)) imageByItem.set(row.item_id, row.url);
     }
 
     const itemsByCategory = new Map<string, PublicItem[]>();
@@ -148,6 +186,7 @@ export default async function PublicMenuPage({
         status: (raw.status as string) as PublicItem["status"],
         dietary: dietaryByItem.get(id) ?? [],
         allergens: allergensByItem.get(id) ?? [],
+        imageUrl: imageByItem.get(id),
         translations,
       };
       const catId = raw.category_id as string;
@@ -166,17 +205,37 @@ export default async function PublicMenuPage({
     }
   }
 
+  const defaultTheme = restaurant.default_theme || "light";
+
+  // Applies the theme class before first paint so the menu never flashes the wrong mode.
+  // Values are JSON-encoded (with `<` escaped) so they cannot break out of the script.
+  const jsonForScript = (value: string) => JSON.stringify(value).replace(/</g, "\\u003c");
+  const themeBootstrap = `(function(){try{var d=${jsonForScript(
+    defaultTheme,
+  )},s=localStorage.getItem(${jsonForScript(
+    `arigatomenu_theme_${restaurant.slug}`,
+  )});var k=s==="dark"||s==="light"?s==="dark":d==="dark"?true:d==="system"?window.matchMedia("(prefers-color-scheme: dark)").matches:false;document.documentElement.classList.toggle("dark",k);document.documentElement.style.colorScheme=k?"dark":"light";}catch(e){}})();`;
+
   return (
-    <MenuView
-      restaurant={{
-        name: LANGUAGE_OFF ? rt?.name || restaurant.name : restaurant.name,
-        tagline: LANGUAGE_OFF ? rt?.tagline ?? null : restaurant.tagline,
-        description: LANGUAGE_OFF ? rt?.description ?? null : restaurant.description,
-        updatedAt: restaurant.updated_at,
-        logoUrl: restaurant.logo_url,
-      }}
-      locale={locale}
-      categories={categories}
-    />
+    <>
+      <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+      <MenuView
+        restaurant={{
+          slug: restaurant.slug,
+          name: LANGUAGE_OFF ? rt?.name || restaurant.name : restaurant.name,
+          tagline: LANGUAGE_OFF ? rt?.tagline ?? null : restaurant.tagline,
+          description: LANGUAGE_OFF ? rt?.description ?? null : restaurant.description,
+          updatedAt: restaurant.updated_at,
+          logoUrl: restaurant.logo_url,
+          coverUrl: restaurant.cover_url,
+          address: restaurant.address,
+          phone: restaurant.phone,
+          instagram: restaurant.instagram,
+          defaultTheme,
+        }}
+        locale={locale}
+        categories={categories}
+      />
+    </>
   );
 }

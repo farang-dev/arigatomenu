@@ -12,10 +12,12 @@ import {
   deleteItem,
   moveCategory,
   moveItem,
+  removeItemImage,
   toggleItemStatus,
   translateMenu,
   updateCategory,
   updateItem,
+  uploadItemImage,
 } from "@/app/dashboard/actions";
 import { MenuEditor, type CategoryData, type ItemData } from "./menu-editor";
 import { TranslateMenuButton } from "./translate-menu-button";
@@ -104,7 +106,7 @@ export default async function MenuEditPage({
         .order("created_at", { ascending: true });
 
       const itemIds = (rawItems ?? []).map((i) => i.id);
-      const [dlRes, alRes, trRes] = await Promise.all([
+      const [dlRes, alRes, trRes, imgRes] = await Promise.all([
         supabase
           .from("menu_item_dietary_labels")
           .select("item_id, label_id")
@@ -117,6 +119,11 @@ export default async function MenuEditPage({
           .from("menu_item_translations")
           .select("item_id, locale, name, description")
           .in("item_id", itemIds),
+        supabase
+          .from("menu_item_images")
+          .select("item_id, url")
+          .in("item_id", itemIds)
+          .order("position"),
       ]);
 
       const dietaryByItem = new Map<string, string[]>();
@@ -139,31 +146,36 @@ export default async function MenuEditPage({
         m[row.locale] = { name: row.name, description: row.description };
         transByItem.set(row.item_id, m);
       }
+      const imageByItem = new Map<string, string>();
+      for (const row of imgRes.data ?? []) {
+        if (!imageByItem.has(row.item_id)) imageByItem.set(row.item_id, row.url);
+      }
 
       for (const it of rawItems ?? []) {
-        const translations = transByItem.get(it.id) ?? {};
-        items.push({
-          id: it.id,
-          categoryId: it.category_id,
-          name: it.name,
-          description: it.description ?? "",
-          price: Number(it.price),
-          priceNote: it.price_note ?? "",
-          status: it.status as ItemData["status"],
-          dietary: dietaryByItem.get(it.id) ?? [],
-          allergens: allergensByItem.get(it.id) ?? [],
-          translationNames: {
-            en: translations.en?.name ?? "",
-            zh: translations.zh?.name ?? "",
-            ko: translations.ko?.name ?? "",
-          },
-          translationDescriptions: {
-            en: translations.en?.description ?? "",
-            zh: translations.zh?.description ?? "",
-            ko: translations.ko?.description ?? "",
-          },
-        });
-      }
+          const translations = transByItem.get(it.id) ?? {};
+          items.push({
+            id: it.id,
+            categoryId: it.category_id,
+            name: it.name,
+            description: it.description ?? "",
+            price: Number(it.price),
+            priceNote: it.price_note ?? "",
+            status: it.status as ItemData["status"],
+            dietary: dietaryByItem.get(it.id) ?? [],
+            allergens: allergensByItem.get(it.id) ?? [],
+            imageUrl: imageByItem.get(it.id),
+            translationNames: {
+              en: translations.en?.name ?? "",
+              zh: translations.zh?.name ?? "",
+              ko: translations.ko?.name ?? "",
+            },
+            translationDescriptions: {
+              en: translations.en?.description ?? "",
+              zh: translations.zh?.description ?? "",
+              ko: translations.ko?.description ?? "",
+            },
+          });
+        }
     }
   }
 
@@ -216,6 +228,7 @@ export default async function MenuEditPage({
       </div>
 
       <MenuEditor
+        restaurantId={id}
         categories={categories}
         items={items}
         createCategory={createCategory.bind(null, menuId ?? "")}
@@ -227,6 +240,8 @@ export default async function MenuEditPage({
         deleteItem={deleteItem}
         moveItem={moveItem}
         toggleItemStatus={toggleItemStatus}
+        uploadItemImage={uploadItemImage}
+        removeItemImage={removeItemImage}
       />
     </div>
   );

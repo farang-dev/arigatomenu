@@ -7,8 +7,10 @@ export type DietaryLabelKey =
   | "gluten_free"
   | "dairy_free"
   | "nut_free"
+  | "pork_free"
   | "alcohol_free"
-  | "spicy";
+  | "spicy"
+  | "organic";
 
 export type AllergenKey =
   | "wheat"
@@ -56,8 +58,10 @@ export const DIETARY_LABELS: { key: DietaryLabelKey; label: Labels }[] = [
   { key: "gluten_free", label: { ja: "グルテンフリー", en: "Gluten Free", zh: "无麸质", ko: "글루텐 프리" } },
   { key: "dairy_free", label: { ja: "乳不使用", en: "Dairy Free", zh: "无乳制品", ko: "유제품 무첨가" } },
   { key: "nut_free", label: { ja: "ナッツ不使用", en: "Nut Free", zh: "无坚果", ko: "견과류 무첨가" } },
+  { key: "pork_free", label: { ja: "豚肉不使用", en: "Pork Free", zh: "无猪肉", ko: "돼지고기 무첨가" } },
   { key: "alcohol_free", label: { ja: "ノンアルコール", en: "Alcohol Free", zh: "无酒精", ko: "무알코올" } },
   { key: "spicy", label: { ja: "辛口", en: "Spicy", zh: "辣", ko: "매운맛" } },
+  { key: "organic", label: { ja: "オーガニック", en: "Organic", zh: "有机", ko: "유기농" } },
 ];
 
 export const ALLERGENS: { key: AllergenKey; label: Labels }[] = [

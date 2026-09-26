@@ -7,11 +7,13 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   deleteRestaurant,
+  removeRestaurantCover,
   removeRestaurantLogo,
   setRestaurantPublished,
   translateMenu,
   updateQrDesign,
   updateRestaurant,
+  uploadRestaurantCover,
   uploadRestaurantLogo,
 } from "@/app/dashboard/actions";
 import { RestaurantInfoForm } from "./restaurant-info-form";
@@ -121,8 +123,11 @@ export default async function RestaurantDetailPage({
         <div className="flex flex-col gap-6 print:hidden">
           <RestaurantLogoForm
             logoUrl={restaurant.logo_url}
-            uploadAction={uploadRestaurantLogo.bind(null, id)}
-            removeAction={removeRestaurantLogo.bind(null, id)}
+            coverUrl={restaurant.cover_url}
+            uploadLogoAction={uploadRestaurantLogo.bind(null, id)}
+            removeLogoAction={removeRestaurantLogo.bind(null, id)}
+            uploadCoverAction={uploadRestaurantCover.bind(null, id)}
+            removeCoverAction={removeRestaurantCover.bind(null, id)}
           />
           <RestaurantInfoForm
             restaurant={restaurant}

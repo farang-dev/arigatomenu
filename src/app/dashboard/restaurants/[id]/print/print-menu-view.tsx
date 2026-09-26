@@ -20,6 +20,7 @@ export type PrintItem = {
   status: "available" | "unavailable";
   dietary: string[];
   allergens: string[];
+  imageUrl?: string;
 };
 
 export type PrintCategory = {
@@ -271,18 +272,6 @@ export function PrintMenuView({
           >
             {/* Header */}
             <header className="relative text-center border-b-2 border-foreground/80 pb-6">
-              {showQr && qrSvg && (
-                <div className="absolute right-0 top-0 hidden sm:flex flex-col items-center gap-1 p-1 bg-white border border-border/70 rounded-xl print:flex">
-                  <div
-                    className="size-16 [&_svg]:size-full"
-                    dangerouslySetInnerHTML={{ __html: qrSvg }}
-                  />
-                  <span className="text-[0.4375rem] text-muted-foreground font-semibold">
-                    {t.scanForDetails}
-                  </span>
-                </div>
-              )}
-
               {restaurant.logoUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -392,9 +381,22 @@ export function PrintMenuView({
             )}
 
             {/* Print Footer */}
-            <footer className="mt-12 pt-4 border-t border-border/50 flex items-center justify-between text-[0.5625rem] text-muted-foreground/60 tracking-wider uppercase">
-              <span>{restaurant.name}</span>
-              <span>ArigatoMenu Digital Paper Service</span>
+            <footer className="mt-10 pt-4 border-t border-border/50 flex items-end justify-between gap-4">
+              <div className="text-[0.5625rem] text-muted-foreground/60 tracking-wider uppercase leading-relaxed">
+                <p>{restaurant.name}</p>
+                <p className="mt-0.5">ArigatoMenu Digital Paper Service</p>
+              </div>
+              {showQr && qrSvg && (
+                <div className="flex flex-col items-center gap-1 text-center">
+                  <div
+                    className="size-20 rounded-lg border border-border/70 bg-white p-1 [&_svg]:size-full"
+                    dangerouslySetInnerHTML={{ __html: qrSvg }}
+                  />
+                  <span className="text-[0.5rem] text-muted-foreground font-semibold">
+                    {t.scanForDetails}
+                  </span>
+                </div>
+              )}
             </footer>
           </article>
         </div>

@@ -28,6 +28,7 @@ export function RestaurantInfoForm({
     tagline: string | null;
     description: string | null;
     slug: string;
+    default_theme?: string;
   };
   translationDefaults: Record<string, Record<string, string>>;
   action: (prevState: ActionState, formData: FormData) => Promise<ActionState>;
@@ -121,6 +122,25 @@ export function RestaurantInfoForm({
             placeholder="店の歴史やこだわり、おすすめの楽しみ方などをお書きください。"
             className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40 placeholder:text-muted-foreground"
           />
+        </div>
+
+        <div className="grid gap-1.5 pt-2 border-t border-border/40">
+          <Label htmlFor="default_theme" className="font-semibold text-xs">
+            公開メニューの初期表示モード (Default Theme)
+          </Label>
+          <select
+            id="default_theme"
+            name="default_theme"
+            defaultValue={restaurant.default_theme ?? "light"}
+            className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/40"
+          >
+            <option value="light">☀️ ライトモード (Light mode)</option>
+            <option value="dark">🌙 ダークモード (Dark mode)</option>
+            <option value="system">💻 端末設定に従う (System preference)</option>
+          </select>
+          <p className="text-[0.6875rem] text-muted-foreground">
+            お客様が公開メニューを開いた際のデフォルトのテーマ色を設定します（お客様自身で切り替えることも可能です）。
+          </p>
         </div>
       </div>
 

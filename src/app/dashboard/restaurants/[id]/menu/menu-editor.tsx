@@ -1,14 +1,17 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useRef, useState } from "react";
 import {
+  AlertCircle,
   ArrowDown,
   ArrowUp,
+  Camera,
   Check,
   ChevronDown,
   ChevronUp,
   FolderPlus,
   Globe2,
+  Image as ImageIcon,
   MoveDown,
   MoveUp,
   Pencil,
@@ -26,6 +29,7 @@ import { ALLERGENS, DIETARY_LABELS } from "@/lib/taxonomy";
 import { formatPrice } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ActionState } from "@/app/dashboard/actions";
+import { OcrImportModal } from "./ocr-import-modal";
 
 export type CategoryData = {
   id: string;
@@ -43,6 +47,7 @@ export type ItemData = {
   status: "available" | "unavailable";
   dietary: string[];
   allergens: string[];
+  imageUrl?: string;
   translationNames: { en: string; zh: string; ko: string };
   translationDescriptions: { en: string; zh: string; ko: string };
 };
@@ -71,6 +76,7 @@ const statusLabels: Record<ItemData["status"], string> = {
 };
 
 export function MenuEditor({
+  restaurantId,
   categories,
   items,
   createCategory,
@@ -82,7 +88,10 @@ export function MenuEditor({
   deleteItem,
   moveItem,
   toggleItemStatus,
+  uploadItemImage,
+  removeItemImage,
 }: {
+  restaurantId: string;
   categories: CategoryData[];
   items: ItemData[];
   createCategory: ActionWithPrev;
@@ -94,9 +103,12 @@ export function MenuEditor({
   deleteItem: ArgAction;
   moveItem: MoveAction;
   toggleItemStatus: ArgAction;
+  uploadItemImage: (itemId: string, restaurantId: string, prevState: ActionState, formData: FormData) => Promise<ActionState>;
+  removeItemImage: (itemId: string, restaurantId: string, prevState: ActionState, formData: FormData) => Promise<ActionState>;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "available" | "unavailable">("all");
+  const [isOcrOpen, setIsOcrOpen] = useState(false);
 
   const totalItems = items.length;
   const availableItems = items.filter((i) => i.status === "available").length;
@@ -104,8 +116,17 @@ export function MenuEditor({
 
   return (
     <div className="flex flex-col gap-6">
+      <OcrImportModal
+        restaurantId={restaurantId}
+        isOpen={isOcrOpen}
+        onClose={() => setIsOcrOpen(false)}
+      />
+
       {/* Category Creation Bar */}
-      <CategoryInput action={createCategory} />
+      <CategoryInput
+        action={createCategory}
+        onOpenOcr={() => setIsOcrOpen(true)}
+      />
 
       {/* Quick Search & Filter Bar */}
       {categories.length > 0 && (
@@ -222,6 +243,9 @@ export function MenuEditor({
                 deleteItem={deleteItem}
                 moveItem={moveItem}
                 toggleItemStatus={toggleItemStatus}
+                uploadItemImage={uploadItemImage}
+                removeItemImage={removeItemImage}
+                restaurantId={restaurantId}
               />
             );
           })}
@@ -231,7 +255,13 @@ export function MenuEditor({
   );
 }
 
-function CategoryInput({ action }: { action: ActionWithPrev }) {
+function CategoryInput({
+  action,
+  onOpenOcr,
+}: {
+  action: ActionWithPrev;
+  onOpenOcr: () => void;
+}) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState<ActionState, FormData>(
     action,
@@ -248,15 +278,28 @@ function CategoryInput({ action }: { action: ActionWithPrev }) {
           <FolderPlus size={18} className="text-primary" />
           <span className="font-serif text-sm font-bold">新しいカテゴリーを追加</span>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => setOpen((v) => !v)}
-          className="text-xs text-muted-foreground"
-        >
-          {open ? "多言語入力を閉じる" : "+ 多言語名も同時入力"}
-        </Button>
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onOpenOcr}
+            className="text-xs font-bold gap-1.5 border-primary/40 text-primary hover:bg-primary/10 shadow-2xs"
+          >
+            <Camera size={14} /> 紙メニューをAI読み込み (Beta)
+          </Button>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setOpen((v) => !v)}
+            className="text-xs text-muted-foreground"
+          >
+            {open ? "多言語入力を閉じる" : "+ 多言語名も同時入力"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -307,6 +350,9 @@ function CategoryBlock({
   deleteItem,
   moveItem,
   toggleItemStatus,
+  uploadItemImage,
+  removeItemImage,
+  restaurantId,
 }: {
   category: CategoryData;
   items: ItemData[];
@@ -321,6 +367,9 @@ function CategoryBlock({
   deleteItem: ArgAction;
   moveItem: MoveAction;
   toggleItemStatus: ArgAction;
+  uploadItemImage: (itemId: string, restaurantId: string, prevState: ActionState, formData: FormData) => Promise<ActionState>;
+  removeItemImage: (itemId: string, restaurantId: string, prevState: ActionState, formData: FormData) => Promise<ActionState>;
+  restaurantId: string;
 }) {
   const [showAddItem, setShowAddItem] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -444,6 +493,8 @@ function CategoryBlock({
               moveItemUp={moveItem.bind(null, item.id, "up")}
               moveItemDown={moveItem.bind(null, item.id, "down")}
               toggleStatusAction={toggleItemStatus.bind(null, item.id)}
+              uploadImageAction={uploadItemImage.bind(null, item.id, restaurantId)}
+              removeImageAction={removeItemImage.bind(null, item.id, restaurantId)}
             />
           ))}
         </ul>
@@ -508,6 +559,8 @@ function ItemRow({
   moveItemUp,
   moveItemDown,
   toggleStatusAction,
+  uploadImageAction,
+  removeImageAction,
 }: {
   item: ItemData;
   itemIndex: number;
@@ -517,6 +570,8 @@ function ItemRow({
   moveItemUp: ActionWithPrev;
   moveItemDown: ActionWithPrev;
   toggleStatusAction: ActionWithPrev;
+  uploadImageAction: ActionWithPrev;
+  removeImageAction: ActionWithPrev;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -549,6 +604,7 @@ function ItemRow({
             status: item.status,
             dietary: item.dietary,
             allergens: item.allergens,
+            imageUrl: item.imageUrl,
             translationNames: item.translationNames,
             translationDescriptions: item.translationDescriptions,
           }}
@@ -586,6 +642,13 @@ function ItemRow({
             </button>
           </form>
         </div>
+
+        {/* Item thumbnail */}
+        <ItemImageUploader
+          imageUrl={item.imageUrl}
+          uploadAction={uploadImageAction}
+          removeAction={removeImageAction}
+        />
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-2">
@@ -733,6 +796,7 @@ type ItemDefaults = {
   status?: ItemData["status"];
   dietary?: string[];
   allergens?: string[];
+  imageUrl?: string;
   translationNames?: ItemData["translationNames"];
   translationDescriptions?: ItemData["translationDescriptions"];
 };
@@ -1003,6 +1067,144 @@ function SelectStatus({
           {statusLabels[opt]}
         </label>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Tiny inline image uploader shown as a square thumbnail in ItemRow.
+ * Clicking it opens a hidden file input; on selection, submits a form action.
+ * Hovering reveals a remove button if an image exists.
+ */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+function ItemImageUploader({
+  imageUrl,
+  uploadAction,
+  removeAction,
+}: {
+  imageUrl?: string;
+  uploadAction: ActionWithPrev;
+  removeAction: ActionWithPrev;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadState, uploadFormAction, uploading] = useActionState<ActionState, FormData>(
+    uploadAction,
+    undefined,
+  );
+  const [removeState, removeFormAction, removing] = useActionState<ActionState, FormData>(
+    removeAction,
+    undefined,
+  );
+  const [pendingSrc, setPendingSrc] = useState<string | undefined>(undefined);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // While an action is in flight we show the local/optimistic value, then fall back
+  // to the persisted one. A failure therefore never leaves a stale preview behind.
+  const shownSrc = removing ? undefined : uploading ? (pendingSrc ?? imageUrl) : imageUrl;
+
+  const errorMessage = clientError ?? uploadState?.error ?? removeState?.error ?? null;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      setClientError("画像サイズは5MB以下にしてください。");
+      e.target.value = "";
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setClientError("画像ファイル（PNG・JPEG・WebPなど）を選択してください。");
+      e.target.value = "";
+      return;
+    }
+
+    setClientError(null);
+    // Local preview while uploading
+    const reader = new FileReader();
+    reader.onload = (ev) => setPendingSrc(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    // Submit form
+    formRef.current?.requestSubmit();
+    e.target.value = "";
+  };
+
+  return (
+    <div className="relative shrink-0 group">
+      {/* Upload form */}
+      <form ref={formRef} action={uploadFormAction}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          name="image"
+          accept="image/*"
+          className="sr-only"
+          onChange={handleFileChange}
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setClientError(null);
+            setPendingSrc(undefined);
+            fileInputRef.current?.click();
+          }}
+          disabled={uploading || removing}
+          title={shownSrc ? "画像を変更" : "画像を追加"}
+          className={cn(
+            "relative size-11 rounded-lg border overflow-hidden transition-all",
+            errorMessage
+              ? "border-destructive/60 ring-2 ring-destructive/20"
+              : shownSrc
+                ? "border-border/60"
+                : "border-dashed border-border/60 bg-muted/30 hover:bg-muted/60 hover:border-primary/40",
+          )}
+        >
+          {shownSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={shownSrc}
+              alt=""
+              className="size-full object-cover"
+            />
+          ) : (
+            <ImageIcon size={16} className="absolute inset-0 m-auto text-muted-foreground/60" />
+          )}
+          {uploading && (
+            <span className="absolute inset-0 flex items-center justify-center bg-background/70">
+              <span className="size-3 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </span>
+          )}
+        </button>
+      </form>
+
+      {/* Error / status message */}
+      {errorMessage && (
+        <div
+          role="alert"
+          className="absolute top-full left-0 mt-1.5 z-30 w-56 rounded-lg border border-destructive/30 bg-background px-2.5 py-2 text-left text-[0.6875rem] font-medium leading-relaxed text-destructive shadow-lg dark:border-destructive/40 dark:bg-neutral-900"
+        >
+          <span className="flex items-start gap-1.5">
+            <AlertCircle size={12} className="mt-px shrink-0" />
+            <span>{errorMessage}</span>
+          </span>
+        </div>
+      )}
+
+      {/* Remove button — visible on hover when image exists */}
+      {shownSrc && (
+        <form action={removeFormAction} className="absolute -top-1.5 -right-1.5 hidden group-hover:block">
+          <button
+            type="submit"
+            disabled={removing}
+            title="画像を削除"
+            className="flex size-4 cursor-pointer items-center justify-center rounded-full bg-destructive text-white shadow-sm transition-opacity hover:opacity-90"
+          >
+            <X size={9} />
+          </button>
+        </form>
+      )}
     </div>
   );
 }
