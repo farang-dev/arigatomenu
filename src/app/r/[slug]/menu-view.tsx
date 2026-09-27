@@ -517,53 +517,51 @@ export function MenuView({
           </div>
         </div>
 
-        {/* Quick Nav — dietary tags first, then categories, in one scrollable row */}
-        <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-3 overflow-x-auto no-scrollbar">
-          <div className="mx-auto flex max-w-2xl items-center gap-2.5 min-w-max">
-            {activeCategoryId === null && dietaryQuickLinks.length > 0 && (
-              <>
-                <span className="flex items-center gap-1.5 pr-1 text-sm font-bold text-muted-foreground">
-                  <Leaf size={15} className="text-primary" />
-                  {t.dietaryQuickLabel}
-                </span>
+        {/* Dietary Quick Links — kept visible while filtering so the active tag can be toggled off */}
+        {activeCategoryId === null && dietaryQuickLinks.length > 0 && (
+          <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-3 overflow-x-auto no-scrollbar">
+            <div className="mx-auto flex max-w-2xl items-center gap-2.5 min-w-max">
+              <span className="flex items-center gap-1.5 pr-1 text-sm font-bold text-muted-foreground">
+                <Leaf size={15} className="text-primary" />
+                {t.dietaryQuickLabel}
+              </span>
 
-                {dietaryQuickLinks.map((d) => {
-                  const isActive = dietaryFilter.has(d.key);
-                  return (
-                    <button
-                      key={d.key}
-                      type="button"
-                      onClick={() => applyDietaryQuick(d.key)}
-                      title={`${d.label} — ${d.count}`}
+              {dietaryQuickLinks.map((d) => {
+                const isActive = dietaryFilter.has(d.key);
+                return (
+                  <button
+                    key={d.key}
+                    type="button"
+                    onClick={() => applyDietaryQuick(d.key)}
+                    title={`${d.label} — ${d.count}`}
+                    className={cn(
+                      "cursor-pointer flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all",
+                      isActive
+                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                        : "border border-border/70 bg-card text-foreground hover:bg-muted dark:border-neutral-800 dark:bg-neutral-900",
+                    )}
+                  >
+                    <span>{d.label}</span>
+                    <span
                       className={cn(
-                        "cursor-pointer flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all",
+                        "text-xs rounded-full px-2 py-0.5 tabular-nums",
                         isActive
-                          ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                          : "border border-border/70 bg-card text-foreground hover:bg-muted dark:border-neutral-800 dark:bg-neutral-900",
+                          ? "bg-black/20 text-white font-bold"
+                          : "bg-muted dark:bg-neutral-800 text-muted-foreground",
                       )}
                     >
-                      <span>{d.label}</span>
-                      <span
-                        className={cn(
-                          "text-xs rounded-full px-2 py-0.5 tabular-nums",
-                          isActive
-                            ? "bg-black/20 text-white font-bold"
-                            : "bg-muted dark:bg-neutral-800 text-muted-foreground",
-                        )}
-                      >
-                        {d.count}
-                      </span>
-                    </button>
-                  );
-                })}
+                      {d.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                <span
-                  aria-hidden
-                  className="h-5 w-px shrink-0 bg-border dark:bg-neutral-700"
-                />
-              </>
-            )}
-
+        {/* Category Horizontal Quick Nav Bar */}
+        <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-3 overflow-x-auto no-scrollbar">
+          <div className="mx-auto flex max-w-2xl items-center gap-2.5 min-w-max">
             <button
               type="button"
               onClick={() => {
