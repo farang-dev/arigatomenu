@@ -517,51 +517,53 @@ export function MenuView({
           </div>
         </div>
 
-        {/* Dietary Quick Links — kept visible while filtering so the active tag can be toggled off */}
-        {activeCategoryId === null && dietaryQuickLinks.length > 0 && (
-          <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-2 overflow-x-auto no-scrollbar">
-            <div className="mx-auto flex max-w-2xl items-center gap-1.5 min-w-max">
-              <span className="flex items-center gap-1 pr-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">
-                <Leaf size={12} className="text-primary" />
-                {t.dietaryQuickLabel}
-              </span>
+        {/* Quick Nav — dietary tags first, then categories, in one scrollable row */}
+        <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-3 overflow-x-auto no-scrollbar">
+          <div className="mx-auto flex max-w-2xl items-center gap-2.5 min-w-max">
+            {activeCategoryId === null && dietaryQuickLinks.length > 0 && (
+              <>
+                <span className="flex items-center gap-1.5 pr-1 text-sm font-bold text-muted-foreground">
+                  <Leaf size={15} className="text-primary" />
+                  {t.dietaryQuickLabel}
+                </span>
 
-              {dietaryQuickLinks.map((d) => {
-                const isActive = dietaryFilter.has(d.key);
-                return (
-                  <button
-                    key={d.key}
-                    type="button"
-                    onClick={() => applyDietaryQuick(d.key)}
-                    title={`${d.label} — ${d.count}`}
-                    className={cn(
-                      "cursor-pointer flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-all",
-                      isActive
-                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
-                        : "border border-border/70 bg-card text-foreground hover:bg-muted dark:border-neutral-800 dark:bg-neutral-900",
-                    )}
-                  >
-                    <span>{d.label}</span>
-                    <span
+                {dietaryQuickLinks.map((d) => {
+                  const isActive = dietaryFilter.has(d.key);
+                  return (
+                    <button
+                      key={d.key}
+                      type="button"
+                      onClick={() => applyDietaryQuick(d.key)}
+                      title={`${d.label} — ${d.count}`}
                       className={cn(
-                        "text-[0.625rem] rounded-full px-1.5 py-0.2 tabular-nums",
+                        "cursor-pointer flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all",
                         isActive
-                          ? "bg-black/20 text-white font-bold"
-                          : "bg-muted dark:bg-neutral-800 text-muted-foreground",
+                          ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                          : "border border-border/70 bg-card text-foreground hover:bg-muted dark:border-neutral-800 dark:bg-neutral-900",
                       )}
                     >
-                      {d.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                      <span>{d.label}</span>
+                      <span
+                        className={cn(
+                          "text-xs rounded-full px-2 py-0.5 tabular-nums",
+                          isActive
+                            ? "bg-black/20 text-white font-bold"
+                            : "bg-muted dark:bg-neutral-800 text-muted-foreground",
+                        )}
+                      >
+                        {d.count}
+                      </span>
+                    </button>
+                  );
+                })}
 
-        {/* Category Horizontal Quick Nav Bar */}
-        <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-2 overflow-x-auto no-scrollbar">
-          <div className="mx-auto flex max-w-2xl items-center gap-1.5 min-w-max">
+                <span
+                  aria-hidden
+                  className="h-5 w-px shrink-0 bg-border dark:bg-neutral-700"
+                />
+              </>
+            )}
+
             <button
               type="button"
               onClick={() => {
@@ -569,7 +571,7 @@ export function MenuView({
                 clearAllFilters();
               }}
               className={cn(
-                "cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-all",
+                "cursor-pointer rounded-full px-4 py-2 text-sm font-semibold transition-all",
                 activeCategoryId === null && !hasActiveFilters
                   ? "bg-foreground text-background dark:bg-neutral-100 dark:text-neutral-900 font-bold"
                   : "border border-border/70 bg-card text-muted-foreground hover:text-foreground dark:border-neutral-800 dark:bg-neutral-900",
@@ -588,7 +590,7 @@ export function MenuView({
                     setActiveCategoryId(cat.id);
                   }}
                   className={cn(
-                    "cursor-pointer rounded-full px-3 py-1 text-xs font-semibold transition-all flex items-center gap-1.5",
+                    "cursor-pointer rounded-full px-4 py-2 text-sm font-semibold transition-all flex items-center gap-2",
                     isSelected
                       ? "bg-primary text-primary-foreground font-bold shadow-xs"
                       : "border border-border/70 bg-card text-foreground hover:bg-muted dark:border-neutral-800 dark:bg-neutral-900",
@@ -597,7 +599,7 @@ export function MenuView({
                   <span>{cat.name}</span>
                   <span
                     className={cn(
-                      "text-[0.625rem] rounded-full px-1.5 py-0.2",
+                      "text-xs rounded-full px-2 py-0.5 tabular-nums",
                       isSelected
                         ? "bg-black/20 text-white font-bold"
                         : "bg-muted dark:bg-neutral-800 text-muted-foreground",
