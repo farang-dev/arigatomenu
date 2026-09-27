@@ -22,6 +22,7 @@ import {
   UtensilsCrossed,
   X,
 } from "lucide-react";
+import { SquareImageCropper } from "@/components/square-image-cropper";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -502,6 +503,7 @@ function CategoryBlock({
     </section>
   );
 }
+
 
 function CategoryEditForm({
   category,
@@ -1098,6 +1100,7 @@ function ItemImageUploader({
   );
   const [pendingSrc, setPendingSrc] = useState<string | undefined>(undefined);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   // While an action is in flight we show the local/optimistic value, then fall back
@@ -1106,29 +1109,33 @@ function ItemImageUploader({
 
   const errorMessage = clientError ?? uploadState?.error ?? removeState?.error ?? null;
 
+  const submitFile = (file: File) => {
+    // Hand the square-cropped file to the form via DataTransfer
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    const input = formRef.current?.elements.namedItem("image") as HTMLInputElement | null;
+    if (!input) return;
+    input.files = transfer.files;
+    formRef.current?.requestSubmit();
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
 
     if (file.size > MAX_IMAGE_BYTES) {
       setClientError("画像サイズは5MB以下にしてください。");
-      e.target.value = "";
       return;
     }
     if (!file.type.startsWith("image/")) {
       setClientError("画像ファイル（PNG・JPEG・WebPなど）を選択してください。");
-      e.target.value = "";
       return;
     }
 
     setClientError(null);
-    // Local preview while uploading
-    const reader = new FileReader();
-    reader.onload = (ev) => setPendingSrc(ev.target?.result as string);
-    reader.readAsDataURL(file);
-    // Submit form
-    formRef.current?.requestSubmit();
-    e.target.value = "";
+    // Square-crop first, then upload
+    setCropFile(file);
   };
 
   return (
@@ -1204,6 +1211,21 @@ function ItemImageUploader({
             <X size={9} />
           </button>
         </form>
+      )}
+
+      {/* Square crop dialog */}
+      {cropFile && (
+        <SquareImageCropper
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onApply={(cropped) => {
+            const reader = new FileReader();
+            reader.onload = (ev) => setPendingSrc(ev.target?.result as string);
+            reader.readAsDataURL(cropped);
+            setCropFile(null);
+            submitFile(cropped);
+          }}
+        />
       )}
     </div>
   );

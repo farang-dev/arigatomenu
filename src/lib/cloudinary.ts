@@ -93,12 +93,16 @@ export async function uploadRestaurantLogoImage(
   const { apiKey, apiSecret } = cloudinaryEnv();
   const folder = `arigatomenu/restaurants/${restaurantId}`;
   const timestamp = Math.floor(Date.now() / 1000);
-  const params = { folder, timestamp };
+  // c_pad keeps the whole logo visible and pads it into a square canvas,
+  // unlike c_fill which would cut the logo off.
+  const eager = "c_pad,b_auto,w_600,h_600,f_webp,q_auto";
+  const params = { eager, folder, timestamp };
   const signature = sign(params, apiSecret);
 
   const body = new FormData();
   body.append("file", file);
   body.append("folder", folder);
+  body.append("eager", eager);
   body.append("timestamp", String(timestamp));
   body.append("api_key", apiKey);
   body.append("signature", signature);
@@ -111,9 +115,15 @@ export async function uploadRestaurantLogoImage(
         : "Cloudinary がエラーを返しました";
     throw new Error(`画像のアップロードに失敗しました（${message}）。`);
   }
+
+  const eager0 = Array.isArray(data.eager) && data.eager[0];
+  const url = eager0 && typeof eager0 === "object" && "secure_url" in eager0
+    ? String((eager0 as Record<string, unknown>).secure_url)
+    : String(data.secure_url ?? data.url ?? "");
+
   return {
     publicId: String(data.public_id),
-    url: String(data.secure_url ?? data.url ?? ""),
+    url,
   };
 }
 

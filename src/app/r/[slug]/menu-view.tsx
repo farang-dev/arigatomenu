@@ -802,7 +802,7 @@ export function MenuView({
                       {/* Mobile: image sits beside the text so the card stays short.
                           sm and up: full-width cover on top. */}
                       {coverImage ? (
-                        <div className="relative w-28 min-h-28 shrink-0 self-stretch overflow-hidden bg-muted dark:bg-neutral-950 sm:w-full sm:min-h-0 sm:h-40">
+                        <div className="relative w-28 aspect-square shrink-0 self-start overflow-hidden bg-muted dark:bg-neutral-950 sm:w-full sm:self-stretch">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={coverImage}
@@ -1204,7 +1204,7 @@ export function MenuView({
 
             {/* Modal Image */}
             {selectedItem.imageUrl && (
-              <div className="relative h-64 sm:h-72 w-full bg-neutral-950">
+              <div className="relative aspect-square w-full bg-neutral-950">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={selectedItem.imageUrl}
