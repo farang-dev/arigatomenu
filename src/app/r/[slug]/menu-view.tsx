@@ -782,7 +782,7 @@ export function MenuView({
               </div>
 
               {/* Category Cards Section */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-5 items-start">
                 {categories.map((cat) => {
                   const itemImages = cat.items
                     .map((i) => i.imageUrl)
@@ -797,11 +797,12 @@ export function MenuView({
                     <div
                       key={cat.id}
                       onClick={() => setActiveCategoryId(cat.id)}
-                      className="group cursor-pointer relative overflow-hidden rounded-3xl border border-border/80 bg-card dark:border-neutral-800 dark:bg-neutral-900 shadow-sm hover:shadow-md hover:border-primary/60 dark:hover:border-primary/60 transition-all duration-300 hover:-translate-y-1 active:scale-[0.99] flex flex-col justify-between"
+                      className="group cursor-pointer relative overflow-hidden rounded-3xl border border-border/80 bg-card dark:border-neutral-800 dark:bg-neutral-900 shadow-sm hover:shadow-md hover:border-primary/60 dark:hover:border-primary/60 transition-all duration-300 hover:-translate-y-1 active:scale-[0.99] flex flex-row sm:flex-col sm:justify-between"
                     >
-                      {/* Category Image Container */}
+                      {/* Mobile: image sits beside the text so the card stays short.
+                          sm and up: full-width cover on top. */}
                       {coverImage ? (
-                        <div className="relative h-52 sm:h-60 w-full overflow-hidden bg-muted dark:bg-neutral-950">
+                        <div className="relative w-28 min-h-28 shrink-0 self-stretch overflow-hidden bg-muted dark:bg-neutral-950 sm:w-full sm:min-h-0 sm:h-40">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={coverImage}
@@ -813,39 +814,27 @@ export function MenuView({
                             }}
                             className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-
-                          {/* Category Title Overlay on Image */}
-                          <div className="absolute bottom-4 left-4 right-4 text-white">
-                            <h3 className="font-serif text-xl sm:text-2xl font-bold tracking-tight drop-shadow-sm">
-                              {cat.name}
-                            </h3>
-                            <p className="text-xs text-white/80 mt-1 font-medium">
-                              {t.categoryItemsCount(cat.items.length)}
-                            </p>
-                          </div>
                         </div>
-                      ) : (
-                        /* Image-less categories stay compact instead of reserving tall empty space */
-                        <div className="px-4 pt-4">
-                          <h3 className="font-serif text-base sm:text-lg font-bold tracking-tight text-foreground dark:text-neutral-100 truncate">
+                      ) : null}
+
+                      {/* Card Body */}
+                      <div className="flex-1 min-w-0 p-4 space-y-2">
+                        <div>
+                          <h3 className="font-serif text-base sm:text-lg font-bold tracking-tight text-foreground dark:text-neutral-100 line-clamp-2">
                             {cat.name}
                           </h3>
                           <p className="text-xs text-muted-foreground mt-0.5 font-medium">
                             {t.categoryItemsCount(cat.items.length)}
                           </p>
                         </div>
-                      )}
 
-                      {/* Card Bottom Meta */}
-                      <div className="p-4 space-y-2.5">
                         {cat.items.length > 0 && (
-                          <p className="text-xs text-muted-foreground line-clamp-1 leading-relaxed">
+                          <p className="text-xs text-muted-foreground line-clamp-2 sm:line-clamp-1 leading-relaxed">
                             {cat.items.map((i) => i.translations?.[locale]?.name || i.name).join(" / ")}
                           </p>
                         )}
 
-                        <div className="flex items-center justify-between pt-2 border-t border-border/40 dark:border-neutral-800 text-xs">
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-border/40 dark:border-neutral-800 text-xs">
                           {minPrice !== null && (
                             <span className="font-bold tabular-nums text-foreground dark:text-neutral-200">
                               {minPrice === maxPrice
