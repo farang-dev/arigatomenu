@@ -8,13 +8,13 @@ import {
   Check,
   ChevronRight,
   Filter,
+  Leaf,
   MapPin,
   Moon,
   Phone,
   RotateCcw,
   Search,
   Sun,
-  UtensilsCrossed,
   X,
 } from "lucide-react";
 import { ALLERGENS, DIETARY_LABELS, allergenLabel, dietaryLabel } from "@/lib/taxonomy";
@@ -83,6 +83,7 @@ const UI_COPY: Record<
     allCategories: string;
     noResults: string;
     dietaryFilterTitle: string;
+    dietaryQuickLabel: string;
     allergenFilterTitle: string;
     excludeAllergensBtn: string;
     clearFilters: string;
@@ -110,6 +111,7 @@ const UI_COPY: Record<
     allCategories: "すべてのカテゴリー",
     noResults: "該当するメニューが見つかりませんでした",
     dietaryFilterTitle: "こだわり条件",
+    dietaryQuickLabel: "こだわり条件",
     allergenFilterTitle: "除外するアレルゲン（28品目対応）",
     excludeAllergensBtn: "フィルター",
     clearFilters: "条件をクリア",
@@ -136,6 +138,7 @@ const UI_COPY: Record<
     allCategories: "All Categories",
     noResults: "No menu items found",
     dietaryFilterTitle: "Dietary Options",
+    dietaryQuickLabel: "Dietary",
     allergenFilterTitle: "Exclude Allergens (28 items)",
     excludeAllergensBtn: "Filter",
     clearFilters: "Clear all",
@@ -162,6 +165,7 @@ const UI_COPY: Record<
     allCategories: "全部分类",
     noResults: "未找到相关菜品",
     dietaryFilterTitle: "饮食偏好",
+    dietaryQuickLabel: "饮食偏好",
     allergenFilterTitle: "排除过敏原（支持28种）",
     excludeAllergensBtn: "筛选",
     clearFilters: "清空筛选",
@@ -188,6 +192,7 @@ const UI_COPY: Record<
     allCategories: "전체 카테고리",
     noResults: "해당하는 메뉴가 없습니다",
     dietaryFilterTitle: "식단 선호",
+    dietaryQuickLabel: "식단",
     allergenFilterTitle: "제외할 알레르기（28종 대응）",
     excludeAllergensBtn: "필터",
     clearFilters: "필터 초기화",
@@ -369,6 +374,34 @@ export function MenuView({
     categories.some((c) => c.items.some((i) => i.allergens.includes(a.key))),
   );
 
+  // Dietary tags that actually appear on this menu, with their item counts.
+  // Ordered as in DIETARY_LABELS, so vegan/vegetarian/halal come first.
+  const dietaryQuickLinks = useMemo(
+    () =>
+      DIETARY_LABELS.map((d) => ({
+        key: d.key,
+        label: d.label[locale],
+        count: categories.reduce(
+          (acc, cat) => acc + cat.items.filter((i) => i.dietary.includes(d.key)).length,
+          0,
+        ),
+      })).filter((d) => d.count > 0),
+    [categories, locale],
+  );
+
+  const applyDietaryQuick = (key: string) => {
+    setActiveCategoryId(null);
+    setQuery("");
+    setAllergenExclusions(new Set());
+    setDietaryFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const neededFootnote = categories.some((cat) => cat.items.some((i) => i.allergens.length > 0));
 
   // Is viewing storefront home
@@ -483,6 +516,48 @@ export function MenuView({
             </div>
           </div>
         </div>
+
+        {/* Dietary Quick Links — kept visible while filtering so the active tag can be toggled off */}
+        {activeCategoryId === null && dietaryQuickLinks.length > 0 && (
+          <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-2 overflow-x-auto no-scrollbar">
+            <div className="mx-auto flex max-w-2xl items-center gap-1.5 min-w-max">
+              <span className="flex items-center gap-1 pr-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-muted-foreground">
+                <Leaf size={12} className="text-primary" />
+                {t.dietaryQuickLabel}
+              </span>
+
+              {dietaryQuickLinks.map((d) => {
+                const isActive = dietaryFilter.has(d.key);
+                return (
+                  <button
+                    key={d.key}
+                    type="button"
+                    onClick={() => applyDietaryQuick(d.key)}
+                    title={`${d.label} — ${d.count}`}
+                    className={cn(
+                      "cursor-pointer flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold transition-all",
+                      isActive
+                        ? "bg-primary text-primary-foreground font-bold shadow-xs"
+                        : "border border-border/70 bg-card text-foreground hover:bg-muted dark:border-neutral-800 dark:bg-neutral-900",
+                    )}
+                  >
+                    <span>{d.label}</span>
+                    <span
+                      className={cn(
+                        "text-[0.625rem] rounded-full px-1.5 py-0.2 tabular-nums",
+                        isActive
+                          ? "bg-black/20 text-white font-bold"
+                          : "bg-muted dark:bg-neutral-800 text-muted-foreground",
+                      )}
+                    >
+                      {d.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Category Horizontal Quick Nav Bar */}
         <div className="border-t border-border/50 dark:border-neutral-800 bg-background dark:bg-neutral-950 px-4 sm:px-6 py-2 overflow-x-auto no-scrollbar">
@@ -752,18 +827,13 @@ export function MenuView({
                         </div>
                       ) : (
                         /* Image-less categories stay compact instead of reserving tall empty space */
-                        <div className="flex items-center gap-3 px-4 pt-4">
-                          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary dark:bg-primary/20">
-                            <UtensilsCrossed size={18} />
-                          </div>
-                          <div className="min-w-0">
-                            <h3 className="font-serif text-base sm:text-lg font-bold tracking-tight text-foreground dark:text-neutral-100 truncate">
-                              {cat.name}
-                            </h3>
-                            <p className="text-xs text-muted-foreground mt-0.5 font-medium">
-                              {t.categoryItemsCount(cat.items.length)}
-                            </p>
-                          </div>
+                        <div className="px-4 pt-4">
+                          <h3 className="font-serif text-base sm:text-lg font-bold tracking-tight text-foreground dark:text-neutral-100 truncate">
+                            {cat.name}
+                          </h3>
+                          <p className="text-xs text-muted-foreground mt-0.5 font-medium">
+                            {t.categoryItemsCount(cat.items.length)}
+                          </p>
                         </div>
                       )}
 
